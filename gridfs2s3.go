@@ -6,12 +6,12 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"gopkg.in/mgo.v2"
-	"io"
-	"io/ioutil"
-	"os"
+	//"gopkg.in/mgo.v2"
+	"github.com/globalsign/mgo"
 	"path/filepath"
 	"strings"
+	"time"
+        "log"
 )
 
 var (
@@ -29,7 +29,7 @@ var replacer = strings.NewReplacer("_", "/")
 
 func check(err error) {
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }
 
@@ -37,28 +37,33 @@ func uploadFile(mongoSession *mgo.Session, fileName string) {
 
 	//fmt.Printf("Try get file %s from GridFS\n", fileName)
 	// Get file from GridFS
-	gfs := mongoSession.DB(mongoUrl.Db).GridFS("fs")
+	g := mongoSession.Clone()
+	//gfs = mongoSession.DB(mongoUrl.Db).GridFS("fs")
+	gfs := g.DB(mongoUrl.Db).GridFS("fs")
+
 	file, err := gfs.Open(fileName)
 	check(err)
 
-	// Create tmp file
-	tmpFile, err := ioutil.TempFile("", "gridfs2s3-")
-	check(err)
-
-	savedFile := tmpFile.Name()
-	defer os.Remove(savedFile) // clean up
-
-	// Write to tmp file from GridFS
-	_, err = io.Copy(tmpFile, file)
-	check(err)
-	err = file.Close()
-	check(err)
-	//fmt.Printf("Saved %s to %s\n", fileName, savedFile)
-
-	tmpFile.Close()
-
-	f, err := os.Open(savedFile)
-	check(err)
+	//// Create tmp file
+	//tmpFile, err := ioutil.TempFile("", "gridfs2s3-")
+	//check(err)
+	//
+	//savedFile := tmpFile.Name()
+	//defer os.Remove(savedFile) // clean up
+	defer g.Close()
+	defer file.Close()
+	//
+	//// Write to tmp file from GridFS
+	//_, err = io.Copy(tmpFile, file)
+	//check(err)
+	//err = file.Close()
+	//check(err)
+	////fmt.Printf("Saved %s to %s\n", fileName, savedFile)
+	//
+	//tmpFile.Close()
+	//
+	//f, err := os.Open(savedFile)
+	//check(err)
 
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String("eu-central-1")},
@@ -73,10 +78,10 @@ func uploadFile(mongoSession *mgo.Session, fileName string) {
 	_, err = uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(workBucket.bucketName),
 		Key:    aws.String(filepath.Clean(uploadPath)),
-		Body:   f,
+		Body:   file,
 	})
 	check(err)
-	fmt.Printf("%s saved to %s\n", fileName, uploadPath)
+	log.Printf("%s saved to %s\n", fileName, uploadPath)
 }
 
 func init() {
@@ -108,16 +113,18 @@ func main() {
 	var f *mgo.GridFile
 
 	for gfs.OpenNext(iter, &f) {
-		if f.Name() != "" {
+		if f.Name() != "" && !strings.Contains(f.Name(),"unison") {
 			//fmt.Printf("Try upload file %s with ObjectId %s\n", f.Name(), f.Id())
-			uploadFile(sessionMongo, f.Name())
+			go uploadFile(sessionMongo, f.Name())
+			<-time.After(time.Millisecond * 50)
 		} else {
-			fmt.Printf("Object with id ObjectId %s has no filename\n", f.Id())
+			log.Printf("Object with id ObjectId %s has no filename\n", f.Id())
 		}
 	}
 
-	if iter.Close() != nil {
-		panic(iter.Close())
-	}
+	defer iter.Close()
+	//if iter.Close() != nil {
+	//	panic(iter.Close())
+	//}
 
 }
