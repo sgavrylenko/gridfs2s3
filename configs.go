@@ -45,6 +45,7 @@ type BucketInfo struct {
 	bucketName  string
 	Project     string
 	Environment string
+	Prefix      string
 }
 
 func (info *BucketInfo) checkParams() {

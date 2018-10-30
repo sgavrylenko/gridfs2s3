@@ -8,10 +8,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	//"gopkg.in/mgo.v2"
 	"github.com/globalsign/mgo"
+	"log"
 	"path/filepath"
 	"strings"
 	"time"
-        "log"
 )
 
 var (
@@ -72,16 +72,17 @@ func uploadFile(mongoSession *mgo.Session, fileName string) {
 
 	// Create S3 service client
 	uploader := s3manager.NewUploader(sess)
-	uploadPath := fmt.Sprintf("%s/%s/%s", workBucket.Project, workBucket.Environment, replacer.Replace(fileName))
+	uploadPath := fmt.Sprintf("%s/%s/%s/%s", workBucket.Project, workBucket.Environment, workBucket.Prefix, replacer.Replace(fileName))
 	// Upload the file's body to S3 bucket as an object with the key being the
 	// same as the filename.
 	_, err = uploader.Upload(&s3manager.UploadInput{
-		Bucket: aws.String(workBucket.bucketName),
-		Key:    aws.String(filepath.Clean(uploadPath)),
-		Body:   file,
+		Bucket:      aws.String(workBucket.bucketName),
+		Key:         aws.String(filepath.Clean(uploadPath)),
+		Body:        file,
+		ContentType: aws.String(file.ContentType()),
 	})
 	check(err)
-	log.Printf("%s saved to %s\n", fileName, uploadPath)
+	log.Printf("%s saved to %s as %s\n", fileName, uploadPath, file.ContentType())
 }
 
 func init() {
@@ -89,6 +90,7 @@ func init() {
 	flag.StringVar(&workBucket.bucketName, "bucket", "", "S3 bucket")
 	flag.StringVar(&workBucket.Environment, "env", "", "Project environment")
 	flag.BoolVar(&optionsApp.version, "version", false, "Show version info")
+	flag.StringVar(&workBucket.Prefix, "prefix", "uploads", "path prefix")
 	flag.Parse()
 	optionsApp.checkParams()
 	workBucket.checkParams()
@@ -113,7 +115,7 @@ func main() {
 	var f *mgo.GridFile
 
 	for gfs.OpenNext(iter, &f) {
-		if f.Name() != "" && !strings.Contains(f.Name(),"unison") {
+		if f.Name() != "" && !strings.Contains(f.Name(), "unison") {
 			//fmt.Printf("Try upload file %s with ObjectId %s\n", f.Name(), f.Id())
 			go uploadFile(sessionMongo, f.Name())
 			<-time.After(time.Millisecond * 50)
