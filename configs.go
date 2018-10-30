@@ -69,7 +69,7 @@ type CommonOptions struct {
 
 func (opts *CommonOptions) checkParams() {
 	if opts.version {
-		fmt.Printf("Git Repo: %s\nGit Commit Hash: %s\nVersion: v%s\nBuild Date: %s\n", gitRepo, gitCommit, appVersion, buildStamp)
+		fmt.Printf("Git Repo: %s\nGit Commit Hash: %s\nVersion: %s\nBuild Date: %s\n", gitRepo, gitCommit, appVersion, buildStamp)
 		os.Exit(0)
 	}
 }

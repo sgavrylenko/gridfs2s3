@@ -6,9 +6,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	//"gopkg.in/mgo.v2"
 	"github.com/globalsign/mgo"
 	"log"
+	"mime"
 	"path/filepath"
 	"strings"
 	"time"
@@ -40,6 +40,7 @@ func uploadFile(mongoSession *mgo.Session, fileName string) {
 	g := mongoSession.Clone()
 	//gfs = mongoSession.DB(mongoUrl.Db).GridFS("fs")
 	gfs := g.DB(mongoUrl.Db).GridFS("fs")
+	var fileType string
 
 	file, err := gfs.Open(fileName)
 	check(err)
@@ -70,6 +71,13 @@ func uploadFile(mongoSession *mgo.Session, fileName string) {
 	)
 	check(err)
 
+	// detect mime type
+	if file.ContentType() == "" {
+		fileType = mime.TypeByExtension(filepath.Ext(fileName))
+	} else {
+		fileType = file.ContentType()
+	}
+
 	// Create S3 service client
 	uploader := s3manager.NewUploader(sess)
 	uploadPath := fmt.Sprintf("%s/%s/%s/%s", workBucket.Project, workBucket.Environment, workBucket.Prefix, replacer.Replace(fileName))
@@ -79,10 +87,10 @@ func uploadFile(mongoSession *mgo.Session, fileName string) {
 		Bucket:      aws.String(workBucket.bucketName),
 		Key:         aws.String(filepath.Clean(uploadPath)),
 		Body:        file,
-		ContentType: aws.String(file.ContentType()),
+		ContentType: aws.String(fileType),
 	})
 	check(err)
-	log.Printf("%s saved to %s as %s\n", fileName, uploadPath, file.ContentType())
+	log.Printf("%s saved to %s as %s\n", fileName, uploadPath, fileType)
 }
 
 func init() {
