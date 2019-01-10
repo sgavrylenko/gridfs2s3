@@ -49,15 +49,15 @@ type BucketInfo struct {
 }
 
 func (info *BucketInfo) checkParams() {
-	if info.bucketName == "" {
+	if info.bucketName == "img_backet" {
 		fmt.Println("You need to set bucket name with parameter -bucket")
 		os.Exit(1)
 	}
-	if info.Project == "" {
+	if info.Project == "project_name" {
 		fmt.Println("You need to set project name with parameter -project")
 		os.Exit(1)
 	}
-	if info.Environment == "" {
+	if info.Environment == "stage1" {
 		fmt.Println("You need to set env name with parameter -env")
 		os.Exit(1)
 	}
