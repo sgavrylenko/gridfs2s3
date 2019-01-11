@@ -115,7 +115,8 @@ func uploadFile(connection *mgo.Session, fileInfo Element) error {
 	}
 
 	sessAws, err := session.NewSession(&aws.Config{
-		Region: aws.String("eu-central-1")},
+		Region:     aws.String("eu-central-1"),
+		MaxRetries: aws.Int(5)},
 	)
 	check(err)
 
@@ -137,7 +138,7 @@ func uploadFile(connection *mgo.Session, fileInfo Element) error {
 	}
 
 	log.Printf("%d/%d Done: %s in %.2f secs, size %s", fileInfo.ItemNum, fileInfo.ItemTotal, result.Location, time.Since(startAt).Seconds(), ByteCountBinary(fileInfo.Length))
-
+	//time.Sleep(200*time.Millisecond)
 	return nil
 }
 
@@ -151,6 +152,19 @@ func init() {
 	optionsApp.checkParams()
 	workBucket.checkParams()
 	mongoUrl.init()
+}
+
+func deduplicate(elements []Element) []Element {
+	keys := make(map[string]bool)
+	list := make([]Element, 0, len(elements))
+
+	for _, entry := range elements {
+		if _, present := keys[entry.Filename]; !present {
+			keys[entry.Filename] = true
+			list = append(list, entry)
+		}
+	}
+	return list
 }
 
 func startWorker(session *mgo.Session, workerNum int, in <-chan Element) {
@@ -188,34 +202,39 @@ func main() {
 
 	mainSession := SessionMongo.Copy()
 
+	var results []Element
 	// Search all files in GridFS
 	gfs := mainSession.DB(mongoUrl.Db).GridFS("fs")
 	iter := gfs.Find(nil).Sort("filename").Iter()
-
-	var results []Element
 
 	err = iter.All(&results)
 	if err != nil {
 		log.Println(err)
 	}
 
+	normalizedResults := deduplicate(results)
+
 	var itemNum int32
 	var itemTotal int32
+	var normalizedTotal int32
 	var goodCount int32
 	var wrongCount int32
 
 	goodCount = 0
 	itemTotal = int32(len(results))
+	normalizedTotal = int32(len(normalizedResults))
 	wrongCount = 0
 
 	log.Println("Info: find ", itemTotal, "objects")
 
-	for _, element := range results {
-		itemNum += 1
+	// destroy results slice for free memory
+	results = nil
 
+	for _, element := range normalizedResults {
+		itemNum += 1
 		if element.Filename != "" && !strings.Contains(element.Filename, "unison") {
 			goodCount += 1
-			element.ItemTotal = itemTotal
+			element.ItemTotal = normalizedTotal
 			element.ItemNum = itemNum
 			worketInput <- element
 		} else {
@@ -248,8 +267,9 @@ func main() {
 	if iter.Close() != nil {
 		panic(iter.Close())
 	}
-	log.Printf("Total files in DB: %d", itemTotal)
-	log.Printf("Uploaded files: %d", goodCount)
+	log.Printf("Total obects in DB: %d", itemTotal)
+	log.Printf("Total files for upload: %d", normalizedTotal)
 	log.Printf("Wrong files: %d", wrongCount)
-	log.Printf("Total time: %.2f minutes", time.Since(startAt).Minutes())
+	log.Printf("Uploaded files: %d", goodCount)
+	log.Printf("Total time: %.1f minutes", time.Since(startAt).Minutes())
 }
